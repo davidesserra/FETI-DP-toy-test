@@ -1,6 +1,8 @@
 import numpy as np
 import numpy.typing as npt
 import scipy.sparse
+import scipy.sparse.linalg
+from scipy.sparse.linalg import inv
 
 import dolfinx.fem
 
@@ -33,14 +35,12 @@ def create_primal_Schur(
     P = gbl_dofs_mngr.get_num_primals()
     SPP = scipy.sparse.csr_matrix((P, P), dtype=Krr.dtype)
 
-    raise ValueError("To be implemented!")
+    N = gbl_dofs_mngr.get_num_subdomains()
 
-    # Primal solution.
-    # Urp = ...
-    # Local Schur.
-    # Spp = ...
-
-    # ...
+    for s_id in range(N):
+        Ap = gbl_dofs_mngr.create_Ap(s_id)
+        Spp = Kpp - Krp.T @ inv(Krr) @ Krp
+        SPP += Ap @ Spp @ Ap.T
 
     return SPP
 
@@ -69,20 +69,49 @@ def create_F_and_d_bar(
     rem_dofs = subdomain.get_remainder_dofs()
     primal_dofs = subdomain.get_primal_dofs()
 
-    raise ValueError("To be implemented")
+    Krr = K[rem_dofs,:][:,rem_dofs]
+    Krp = K[rem_dofs,:][:,primal_dofs]
+    Kpp = K[primal_dofs,:][:,primal_dofs]
 
-    # Krr = ...
-    # Krp = ...
-    # Kpp = ...
-
-    # fr = ...
-    # fp = ...
+    fr = f[rem_dofs]
+    fp = f[primal_dofs]
 
     Tdr = subdomain.create_Tdr()
 
-    # ...
+    global_primals = gbl_dofs_mngr.get_num_primals()
 
-    # return F, dbar
+    KPP = scipy.sparse.csr_matrix((global_primals, global_primals))
+    fP = np.zeros(global_primals)
+
+    N = gbl_dofs_mngr.get_num_subdomains()
+    Krr_vector = [Krr.copy() for _ in range(N)]
+    fR = [fr.copy() for _ in range(N)]
+    KRR = scipy.sparse.block_diag(Krr_vector)
+    KRP_blocks = []
+    BR_blocks = []
+    for s_id in range(N):
+        Ap = gbl_dofs_mngr.create_Ap(s_id)
+        KPP += Ap @ Kpp @ Ap.T
+        fP += Ap @ fp
+        KrP = Krp @ Ap.T
+        KRP_blocks.append(KrP)
+        Bd = gbl_dofs_mngr.create_Bd(s_id)
+        Br = Bd @ Tdr
+        BR_blocks.append(Br)
+    KRP = scipy.sparse.vstack(KRP_blocks)
+    KPR = KRP.T
+    BR = scipy.sparse.hstack(BR_blocks)
+    zero_cols = scipy.sparse.csr_matrix((BR.shape[0], gbl_dofs_mngr.get_num_primals()))
+    B = np.hstack([BR, zero_cols])
+    SPP = create_primal_Schur(gbl_dofs_mngr, Krr, Krp, Kpp)
+    print(SPP.shape)
+    print(BR.shape)
+    print(KRP.shape)
+    print(KRR.shape)
+    F = BR @ inv(KRR) @ BR.T + BR @ [inv(KRR) @ KRP @ inv(SPP) @ KPR @ inv(KRR)] @ BR.T
+    dbar = BR @ inv(KRR) @ fR - BR @ inv(KRR) @ KRP @ inv(SPP) @ (fP - KPR @ inv(KRR) @ fR)
+
+    return F, dbar
 
 
 def reconstruct_uP(
@@ -102,9 +131,41 @@ def reconstruct_uP(
 
     subdomain = gbl_dofs_mngr.subdomain
 
-    raise ValueError("To be implemented!")
+    K, f = subdomain.K, subdomain.f
 
-    # return UP
+    rem_dofs = subdomain.get_remainder_dofs()
+    primal_dofs = subdomain.get_primal_dofs()
+
+    Krr = K[rem_dofs,:][:,rem_dofs]
+    Krp = K[rem_dofs,:][:,primal_dofs]
+    Kpp = K[primal_dofs,:][:,primal_dofs]
+
+    fr = f[rem_dofs]
+    fp = f[primal_dofs]
+
+    SPP = create_primal_Schur(gbl_dofs_mngr, Krr, Krp, Kpp)
+
+    N = gbl_dofs_mngr.get_num_subdomains()
+    Krr_vector = [Krr.copy() for _ in range(N)]
+    fR = [fr.copy() for _ in range(N)]
+    KRR = np.diag(Krr_vector)
+    KRP_blocks = []
+    BR_blocks = []
+
+    for s_id in range(N):
+        Ap = gbl_dofs_mngr.create_Ap(s_id)
+        KPP += Ap @ Kpp @ Ap.T
+        fP += Ap @ fp
+        KrP = Krp @ Ap.T
+        KRP_blocks.append(KrP)
+        Bd = gbl_dofs_mngr.create_Bd(s_id)
+        Br = Bd @ Tdr
+    KRP = np.vstack(KRP_blocks)
+    KPR = KRP.T
+    BR = np.hstack(BR_blocks)
+
+    uP = np.inv(SPP) @ ((fP - KPR @ np.inv(KRR) @ fR) + (KPR @ np.inv(KRR) @ BR.T)@lambda_)
+    return uP
 
 
 def reconstruct_Us(
@@ -128,10 +189,14 @@ def reconstruct_Us(
 
     subdomain = gbl_dofs_mngr.subdomain
 
+    K, f = subdomain.K, subdomain.f
+
     rem_dofs = subdomain.get_remainder_dofs()
     primal_dofs = subdomain.get_primal_dofs()
 
-    raise ValueError("To be implemented.")
+    Krr = K[rem_dofs,:][:,rem_dofs]
+    Krp = K[rem_dofs,:][:,primal_dofs]
+
 
     us = []
     N = gbl_dofs_mngr.get_num_subdomains()
@@ -141,7 +206,7 @@ def reconstruct_Us(
         u = np.zeros(K.shape[0], dtype=K.dtype)
         u[primal_dofs] = Ap.T @ uP
 
-        # u[rem_dofs] = ...
+        u[rem_dofs] = np.inv(Krr) @ Krp
 
         us.append(u)
 

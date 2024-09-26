@@ -120,7 +120,10 @@ class SubDomain:
                 degrees-of-freedom.
         """
 
-        raise ValueError("To be implemented!!")
+        primal_dofs = np.empty(4, dtype=np.int32)
+        primal_dofs = self.get_corners_dofs()
+
+        return primal_dofs
 
     def get_remainder_dofs(self) -> npt.NDArray[np.int32]:
         """Gets the local remainder degrees-of-freedom of the subdomain.
@@ -129,7 +132,12 @@ class SubDomain:
             npt.NDArray[np.int32]: Sorted remainder dofs.
         """
 
-        raise ValueError("To be implemented!!")
+        primal_dofs = self.get_primal_dofs()
+        all_dofs = self.get_all_dofs()
+
+        remainder_dofs = np.setdiff1d(all_dofs, primal_dofs)
+
+        return remainder_dofs
 
     def get_dual_dofs(
         self,
@@ -150,9 +158,7 @@ class SubDomain:
         faces_dofs = self.get_faces_dofs()
         primal_dofs = self.get_primal_dofs()
 
-        dual_dofs = []
-        for face_id in range(4):
-            raise ValueError("To be implemented!!")
+        dual_dofs = [np.setdiff1d(face_dofs, primal_dofs) for face_dofs in faces_dofs]
 
         return dual_dofs
 
