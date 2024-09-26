@@ -104,10 +104,6 @@ def create_F_and_d_bar(
     zero_cols = scipy.sparse.csr_matrix((BR.shape[0], gbl_dofs_mngr.get_num_primals()))
     B = np.hstack([BR, zero_cols])
     SPP = create_primal_Schur(gbl_dofs_mngr, Krr, Krp, Kpp)
-    print(SPP.shape)
-    print(BR.shape)
-    print(KRP.shape)
-    print(KRR.shape)
     F = BR @ inv(KRR) @ BR.T + BR @ [inv(KRR) @ KRP @ inv(SPP) @ KPR @ inv(KRR)] @ BR.T
     dbar = BR @ inv(KRR) @ fR - BR @ inv(KRR) @ KRP @ inv(SPP) @ (fP - KPR @ inv(KRR) @ fR)
 
