@@ -80,15 +80,22 @@ def create_F_and_d_bar(
 
     global_primals = gbl_dofs_mngr.get_num_primals()
 
+    # Primal stiffness and force
     KPP = scipy.sparse.csr_matrix((global_primals, global_primals))
     fP = np.zeros(global_primals)
 
     N = gbl_dofs_mngr.get_num_subdomains()
+
+    # Remainder stiffness (from block vector)
     Krr_vector = [Krr.copy() for _ in range(N)]
-    fR = [fr.copy() for _ in range(N)]
     KRR = scipy.sparse.block_diag(Krr_vector)
+
+    fR = [fr.copy() for _ in range(N)]
+
     KRP_blocks = []
+
     BR_blocks = []
+
     for s_id in range(N):
         Ap = gbl_dofs_mngr.create_Ap(s_id)
         KPP += Ap @ Kpp @ Ap.T
@@ -98,12 +105,16 @@ def create_F_and_d_bar(
         Bd = gbl_dofs_mngr.create_Bd(s_id)
         Br = Bd @ Tdr
         BR_blocks.append(Br)
+
     KRP = scipy.sparse.vstack(KRP_blocks)
     KPR = KRP.T
+
     BR = scipy.sparse.hstack(BR_blocks)
     zero_cols = scipy.sparse.csr_matrix((BR.shape[0], gbl_dofs_mngr.get_num_primals()))
     B = np.hstack([BR, zero_cols])
+
     SPP = create_primal_Schur(gbl_dofs_mngr, Krr, Krp, Kpp)
+
     F = BR @ inv(KRR) @ BR.T + BR @ [inv(KRR) @ KRP @ inv(SPP) @ KPR @ inv(KRR)] @ BR.T
     dbar = BR @ inv(KRR) @ fR - BR @ inv(KRR) @ KRP @ inv(SPP) @ (fP - KPR @ inv(KRR) @ fR)
 
