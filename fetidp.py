@@ -86,10 +86,9 @@ def create_F_and_d_bar(
 
     N = gbl_dofs_mngr.get_num_subdomains()
 
-    # Remainder stiffness (from block vector)
+    # Remainder stiffness (from block vector) and force
     Krr_vector = [Krr.copy() for _ in range(N)]
     KRR = scipy.sparse.block_diag(Krr_vector)
-
     fR = [fr.copy() for _ in range(N)]
 
     KRP_blocks = []
@@ -115,7 +114,7 @@ def create_F_and_d_bar(
 
     SPP = create_primal_Schur(gbl_dofs_mngr, Krr, Krp, Kpp)
 
-    F = BR @ inv(KRR) @ BR.T + BR @ [inv(KRR) @ KRP @ inv(SPP) @ KPR @ inv(KRR)] @ BR.T
+    F = BR @ inv(KRR) @ BR.T + BR @ inv(KRR) @ KRP @ inv(SPP) @ KPR @ inv(KRR) @ BR.T
     dbar = BR @ inv(KRR) @ fR - BR @ inv(KRR) @ KRP @ inv(SPP) @ (fP - KPR @ inv(KRR) @ fR)
 
     return F, dbar
